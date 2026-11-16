@@ -1,4 +1,5 @@
 package com.openjarvis.intelligence
+import com.openjarvis.accessibility.JarvisAccessibilityService
 
 import android.app.Notification
 import android.content.pm.PackageManager
@@ -51,7 +52,7 @@ class JarvisNotificationListener : NotificationListenerService() {
         
         scope.launch {
             try {
-                graphifyRepo?.logNotification(
+                graphifyRepo?.logTask("notification",
                     "${parsed.packageName}: ${parsed.title}"
                 )
             } catch (e: Exception) { }
@@ -78,7 +79,7 @@ class JarvisNotificationListener : NotificationListenerService() {
         val isMessaging = sbn.packageName in messagingApps
         
         val sender = if (isMessaging) {
-            extras.getCharSequence(Notification.EXTRA_SENDER_TEXT)?.toString()
+            extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
         } else null
         
         return JarvisNotification(
@@ -150,7 +151,6 @@ class JarvisNotificationListener : NotificationListenerService() {
         val sender: String?
     )
     
-    companion object {
         private val messagingApps = listOf(
             "com.whatsapp",
             "com.google.android.apps.messaging",
@@ -161,5 +161,4 @@ class JarvisNotificationListener : NotificationListenerService() {
             "com.slack",
             "com.discord"
         )
-    }
 }
