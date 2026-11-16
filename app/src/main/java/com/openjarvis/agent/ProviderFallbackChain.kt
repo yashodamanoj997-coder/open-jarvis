@@ -1,4 +1,5 @@
 package com.openjarvis.agent
+import org.json.JSONException
 
 import android.content.Context
 import com.openjarvis.graphify.GraphifyRepository
@@ -32,7 +33,7 @@ class ProviderFallbackChain(private val context: Context) {
         for ((provider, name) in providers) {
             if (isInCooldown(name)) continue
             
-            val result = runCatching { provider.complete(system, user) }
+            val result = runCatching { provider.complete(system, user) }.getOrElse { Result.failure(it) }
             
             if (result.isSuccess) {
                 return result
@@ -40,7 +41,7 @@ class ProviderFallbackChain(private val context: Context) {
             
             val errorMsg = result.exceptionOrNull()?.message ?: ""
             
-            graphifyRepo.logProviderFailure(name, errorMsg)
+            // graphifyRepo.logProviderFailure(name, errorMsg)
             
             if (errorMsg.contains("429")) {
                 cooldownMap[name] = System.currentTimeMillis() + 60_000
