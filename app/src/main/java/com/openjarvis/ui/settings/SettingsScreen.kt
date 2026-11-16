@@ -569,7 +569,7 @@ fun FloatingLabelTextField(
                     fontSize = 14.sp,
                     color = VoidColor.TextPrimary
                 ),
-                visualTransformation = if (isPassword && !showPassword) 
+                visualTransformation = if (isPassword) 
                     PasswordVisualTransformation() else VisualTransformation.None
             )
         }

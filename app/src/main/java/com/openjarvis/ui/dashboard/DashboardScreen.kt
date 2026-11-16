@@ -279,7 +279,7 @@ private fun StatsRow(tasks: List<TaskNode>, alpha: Float) {
         label = "count"
     )
     
-    Column(alpha = alpha) {
+    Column(modifier = Modifier.alpha(alpha)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -339,7 +339,7 @@ private fun StatCard(count: Int, label: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun RecentTasksSection(tasks: List<TaskNode>, alpha: Float) {
-    Column(alpha = alpha) {
+    Column(modifier = Modifier.alpha(alpha)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -508,7 +508,7 @@ private fun AppInitialBadge(label: String) {
 
 @Composable
 private fun QuickAppsSection(apps: List<AppNode>, alpha: Float) {
-    Column(alpha = alpha) {
+    Column(modifier = Modifier.alpha(alpha)) {
         Text(
             text = "QUICK APPS",
             style = TextStyle(
