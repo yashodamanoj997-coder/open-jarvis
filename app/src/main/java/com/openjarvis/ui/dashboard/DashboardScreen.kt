@@ -1,4 +1,6 @@
 package com.openjarvis.ui.dashboard
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.graphics.*
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*

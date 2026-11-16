@@ -1,4 +1,7 @@
 package com.openjarvis.ui.settings
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.unit.*
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*

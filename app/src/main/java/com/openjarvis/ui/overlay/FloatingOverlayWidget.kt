@@ -1,4 +1,7 @@
 package com.openjarvis.ui.overlay
+import androidx.compose.ui.input.pointer.*
+import androidx.compose.animation.core.*
+import androidx.compose.material3.Divider
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
