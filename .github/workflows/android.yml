@@ -2,13 +2,13 @@ name: Build OpenJarvis APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -29,8 +29,6 @@ jobs:
 
       - name: Build APK
         run: |
-          chmod +x gradlew      - name: Build APK
-        run: |
           set +e
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log
@@ -40,10 +38,17 @@ jobs:
       - name: Show compiler errors
         if: failure()
         run: |
-          grep -n -E '(^e: |error:|Unresolved reference|Type mismatch|Overload resolution ambiguity)' build.log | head -80 || tail -n 100 build.log
-          ./gradlew assembleDebug --no-daemon
+          grep -n 'e: ' build.log | head -80 || tail -n 100 build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenJarvis-build-log
+          path: build.log
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OpenJarvis-debug-APK
