@@ -13,6 +13,12 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.openjarvis.ui.theme.OpenJarvisTheme
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.openjarvis.R
 import com.openjarvis.agent.AgentCore
@@ -38,7 +44,8 @@ class OverlayService : Service() {
     private lateinit var graphifyRepo: GraphifyRepository
     private lateinit var socketServer: SocketServer
     private var stateCollectJob: Job? = null
-    private var recentTasks = emptyList<TaskNode>()
+    private var recentTasks by mutableStateOf(emptyList<TaskNode>())
+    private var overlayView: ComposeView? = null
     
     private var isInitialized = false
 
@@ -58,6 +65,7 @@ class OverlayService : Service() {
         }
         
         socketServer.start()
+        showOverlay()
         
         // Load recent tasks
         CoroutineScope(Dispatchers.IO).launch {
@@ -84,13 +92,66 @@ class OverlayService : Service() {
         }
     }
 
+    private fun showOverlay() {
+        if (!Settings.canDrawOverlays(this) || overlayView != null) return
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        val view = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setContent {
+                val agentState by agentCore.state.collectAsState()
+                OpenJarvisTheme {
+                    FloatingOverlayWidget(
+                        agentState = agentState,
+                        voiceManager = voiceManager,
+                        recentTasks = recentTasks,
+                        onCommand = { command -> executeCommand(command) },
+                        onCollapse = { }
+                    )
+                }
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = 16
+            y = 100
+        }
+
+        try {
+            windowManager?.addView(view, params)
+            overlayView = view
+        } catch (e: Exception) {
+            view.disposeComposition()
+            overlayView = null
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun removeOverlay() {
+        overlayView?.let { view ->
+            try {
+                windowManager?.removeView(view)
+            } catch (e: Exception) {
+                // View may already be detached
+            }
+        }
+        overlayView = null
+    }
+
     override fun onDestroy() {
+        removeOverlay()
         super.onDestroy()
         stateCollectJob?.cancel()
         socketServer.stop()
