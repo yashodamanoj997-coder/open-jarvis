@@ -37,6 +37,7 @@ class AgentCore(private val context: Context) {
     private var workingMemory = TaskWorkingMemory()
     private val scope = CoroutineScope(Dispatchers.IO)
     private val taskMutex = Mutex()
+    private val conversationContext = ConversationContext()
 
     private val _state = MutableStateFlow<AgentState>(AgentState.Idle)
     val state: StateFlow<AgentState> = _state
@@ -71,6 +72,7 @@ APP SELECTION REASONING: {APP_REASONING}
 INSTALLED AI APPS: {AI_APPS}
 
 RECENT MEMORY CONTEXT: {GRAPHIFY_CONTEXT}
+RECENT CONVERSATION: {CONVERSATION_CONTEXT}
 
 RULES:
 - Always start complex tasks with open_app
@@ -108,7 +110,9 @@ fun executeTask(cleanCommand: String) {
                     
                     _state.value = AgentState.Running("analyzing task...")
                 
-                val plan = taskRouter.analyze(cleanCommand)
+                val contextualCommand = conversationContext.resolveReferences(cleanCommand)
+                conversationContext.addTurn(ConversationContext.Role.USER, cleanCommand)
+                val plan = taskRouter.analyze(contextualCommand)
                 
                 _state.value = AgentState.Running("reading screen...")
                 
@@ -118,61 +122,58 @@ fun executeTask(cleanCommand: String) {
                 
                 _state.value = AgentState.Running("getting context...")
                 
-                val memoryContext = graphifyRepo.buildMemoryContext(cleanCommand)
+                val memoryContext = graphifyRepo.buildMemoryContext(contextualCommand)
                 
                 val fullSystem = systemPrompt
                     .replace("{SCREEN_OCR}", screenText.take(2000))
                     .replace("{APP_REASONING}", plan.reasoning)
                     .replace("{AI_APPS}", getInstalledAIApps())
                     .replace("{GRAPHIFY_CONTEXT}", if (memoryContext.isBlank()) "No recent tasks" else memoryContext)
+                    .replace("{CONVERSATION_CONTEXT}", conversationContext.buildContextString())
                 
                 _state.value = AgentState.Running("thinking...")
                 
                 val startTime = System.currentTimeMillis()
                 
-                val result = universalAdapter.complete(fullSystem, cleanCommand)
+                val result = universalAdapter.complete(fullSystem, contextualCommand)
                 result.fold(
                     onSuccess = { rawJson ->
                         val latency = System.currentTimeMillis() - startTime
                         
                         val validation = LLMResponseValidator.validate(rawJson)
-                        val rawForParsing = if (!validation.isValid && validation.errors.isNotEmpty()) {
-                            _state.value = AgentState.Error("Invalid response: ${validation.errors.first()}")
-                            graphifyRepo.logTask(cleanCommand, "failed: validation error", "", 0)
-                            return@fold
-                        } else {
-                            rawJson
-                        }
-                        
-                        val actions = ActionJsonParser.parse(rawForParsing)
-                            ?: run {
-                                val retry = universalAdapter.complete(
-                                    fullSystem,
-                                    "$cleanCommand\n\nRespond with JSON array ONLY. No other text."
-                                )
-                                retry.getOrNull()?.let { ActionJsonParser.parse(it) }
-                            }
-                        
-                        if (actions == null) {
-                            _state.value = AgentState.Error("Could not parse AI response")
-                            graphifyRepo.logTask(cleanCommand, "failed: parse error", "", 0)
+
+                        if (!validation.isValid) {
+                            val error = validation.errors.firstOrNull() ?: "Invalid response"
+                            _state.value = AgentState.Error(error)
+                            graphifyRepo.logTask(cleanCommand, "failed: $error", "", 0)
                             return@fold
                         }
-                        
-                        _state.value = AgentState.Running("executing ${actions.size} actions...")
-                        
-                        executeActions(actions)
-                        
+
+                        val actions = validation.actions
+                        val reply = validation.reply?.takeIf { it.isNotBlank() }
+
+                        if (actions.isNotEmpty()) {
+                            _state.value = AgentState.Running("executing ${actions.size} actions...")
+                            executeActions(actions)
+                            analysisEngine.analyzeLastTask()
+                        }
+
+                        val assistantResponse = reply ?: "Completed the requested actions."
+                        conversationContext.addTurn(
+                            ConversationContext.Role.JARVIS,
+                            assistantResponse
+                        )
+
                         graphifyRepo.logTask(
                             command = cleanCommand,
                             result = "success",
                             provider = universalAdapter.getProviderName(),
                             latencyMs = latency
                         )
-                        
-                        analysisEngine.analyzeLastTask()
-                        
-                        _state.value = AgentState.Done("done in ${latency}ms")
+
+                        _state.value = AgentState.Done(
+                            reply ?: "done in ${latency}ms"
+                        )
                     },
                     onFailure = { error ->
                         val msg = when {

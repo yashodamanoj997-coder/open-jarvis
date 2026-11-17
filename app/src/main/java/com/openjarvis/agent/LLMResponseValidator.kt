@@ -5,7 +5,7 @@ import org.json.JSONException
 import org.json.JSONObject
 
 object LLMResponseValidator {
-    
+
     private val knownActions = setOf(
         "open_app", "tap", "tap_coords", "long_press", "type",
         "clear_type", "swipe", "scroll", "press_back", "press_home",
@@ -13,35 +13,54 @@ object LLMResponseValidator {
         "ai_prompt", "mcp_call", "reply_notification",
         "read_clipboard", "write_clipboard", "highlight_element", "error"
     )
-    
+
     fun validate(rawResponse: String): ValidationResult {
         val errors = mutableListOf<String>()
-        
-        val clean = rawResponse
-            .trim()
+
+        val clean = rawResponse.trim()
             .removePrefix("```json")
             .removePrefix("```")
             .removeSuffix("```")
             .trim()
-        
+
         if (!clean.startsWith("[") && !clean.startsWith("{")) {
-            errors.add("Response is not JSON")
-            return ValidationResult(false, emptyList(), errors, false)
+            return ValidationResult(
+                false, emptyList(), listOf("Response is not JSON"), false
+            )
         }
-        
+
         val parsed = try {
-            if (clean.startsWith("{")) {
-                JSONArray("[$clean]")
-            } else {
+            if (clean.startsWith("[")) {
                 JSONArray(clean)
+            } else {
+                val root = JSONObject(clean)
+
+                if (root.has("actions")) {
+                    val reply = root.optString("reply", "").trim()
+                    val actionArray = root.optJSONArray("actions") ?: JSONArray()
+
+                    return validateActions(actionArray, reply, errors)
+                }
+
+                JSONArray().put(root)
             }
         } catch (e: JSONException) {
-            errors.add("Invalid JSON: ${e.message}")
-            return ValidationResult(false, emptyList(), errors, false)
+            return ValidationResult(
+                false, emptyList(),
+                listOf("Invalid JSON: ${e.message}"), false
+            )
         }
-        
+
+        return validateActions(parsed, null, errors)
+    }
+
+    private fun validateActions(
+        parsed: JSONArray,
+        reply: String?,
+        errors: MutableList<String>
+    ): ValidationResult {
         val actions = mutableListOf<Action>()
-        
+
         for (i in 0 until parsed.length()) {
             val obj = try {
                 parsed.getJSONObject(i)
@@ -49,34 +68,38 @@ object LLMResponseValidator {
                 errors.add("Item $i is not an object")
                 continue
             }
-            
+
             val actionType = obj.optString("action", "")
+
             if (actionType.isBlank()) {
                 errors.add("Item $i missing 'action' field")
                 continue
             }
-            
+
             if (actionType !in knownActions) {
                 errors.add("Unknown action type: $actionType — skipping")
                 continue
             }
-            
+
             actions.add(parseAction(obj))
         }
-        
+
         if (actions.size > 50) {
-            errors.add("Suspiciously long action plan (${actions.size} steps) — capped at 50")
-            return ValidationResult(true, actions.take(50), errors, true)
+            errors.add("Action plan capped at 50 steps")
         }
-        
+
+        val finalActions = actions.take(50)
+        val hasReply = !reply.isNullOrBlank()
+
         return ValidationResult(
-            isValid = actions.isNotEmpty(),
-            actions = actions,
+            isValid = finalActions.isNotEmpty() || hasReply,
+            actions = finalActions,
             errors = errors,
-            wasRepaired = errors.isNotEmpty() && actions.isNotEmpty()
+            wasRepaired = errors.isNotEmpty() && (finalActions.isNotEmpty() || hasReply),
+            reply = reply
         )
     }
-    
+
     private fun parseAction(obj: JSONObject): Action {
         return Action(
             action = obj.getString("action"),
@@ -95,11 +118,12 @@ object LLMResponseValidator {
             outputKey = obj.optString("outputKey", null).takeIf { it.isNotBlank() }
         )
     }
-    
+
     data class ValidationResult(
         val isValid: Boolean,
         val actions: List<Action>,
         val errors: List<String>,
-        val wasRepaired: Boolean
+        val wasRepaired: Boolean,
+        val reply: String? = null
     )
 }

@@ -232,29 +232,32 @@ class ConversationContext {
     }
     
     private fun extractEntities(text: String, apps: List<String>) {
-        val words = text.split(" ")
+        val words = text.split(Regex("\\s+")).filter { it.length > 2 }
         for (word in words) {
-            if (word.first().isUpperCase() && word.length > 2) {
-                if (apps.isNotEmpty()) {
-                    entityMemory[word.lowercase()] = "$word (${apps.first()})"
-                }
+            if (word.firstOrNull()?.isUpperCase() == true && apps.isNotEmpty()) {
+                entityMemory[word.lowercase()] = "$word (${apps.first()})"
             }
         }
     }
-    
+
     fun resolveReferences(input: String): String {
+        val repeatPattern = Regex("\\bdo that again\\b", RegexOption.IGNORE_CASE)
+        if (repeatPattern.containsMatchIn(input)) {
+            return repeatPattern.replace(input, lastCommand ?: "do that again")
+        }
+
         var resolved = input
-        
-        resolved = resolved.replace(Regex("\\bhim\\b", RegexOption.IGNORE_CASE), entityMemory["him"] ?: "him")
-        resolved = resolved.replace(Regex("\\bher\\b", RegexOption.IGNORE_CASE), entityMemory["her"] ?: "her")
-        resolved = resolved.replace(Regex("\\bit\\b", RegexOption.IGNORE_CASE), entityMemory["it"] ?: lastUsedApp ?: "it")
-        resolved = resolved.replace(Regex("\\bthat\\b", RegexOption.IGNORE_CASE), lastCommand ?: "that")
-        resolved = resolved.replace(Regex("\\bnow\\b", RegexOption.IGNORE_CASE), if (lastUsedApp != null) "continue in $lastUsedApp" else "now")
-        resolved = resolved.replace(Regex("\\bdo that again\\b", RegexOption.IGNORE_CASE), lastCommand ?: "do that again")
-        
+        resolved = resolved.replace(
+            Regex("\\bit\\b", RegexOption.IGNORE_CASE),
+            lastUsedApp ?: "it"
+        )
+        resolved = resolved.replace(
+            Regex("\\bthat\\b", RegexOption.IGNORE_CASE),
+            lastCommand ?: "that"
+        )
         return resolved
     }
-    
+
     fun buildContextString(): String {
         return turns.takeLast(5).joinToString("\n") {
             "${if (it.role == Role.USER) "User" else "Jarvis"}: ${it.text}"
