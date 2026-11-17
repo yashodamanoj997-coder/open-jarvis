@@ -44,7 +44,7 @@ class OverlayService : Service() {
     private lateinit var graphifyRepo: GraphifyRepository
     private lateinit var socketServer: SocketServer
     private var stateCollectJob: Job? = null
-    private var recentTasks by mutableStateOf(emptyList<TaskNode>())
+    private var recentTasksState by mutableStateOf(emptyList<TaskNode>())
     private var overlayView: ComposeView? = null
     
     private var isInitialized = false
@@ -69,7 +69,7 @@ class OverlayService : Service() {
         
         // Load recent tasks
         CoroutineScope(Dispatchers.IO).launch {
-            recentTasks = graphifyRepo.getRecentTasks(10)
+            recentTasksState = graphifyRepo.getRecentTasks(10)
         }
     }
     
@@ -104,7 +104,7 @@ class OverlayService : Service() {
                     FloatingOverlayWidget(
                         agentState = agentState,
                         voiceManager = voiceManager,
-                        recentTasks = recentTasks,
+                        recentTasks = recentTasksState,
                         onCommand = { command -> executeCommand(command) },
                         onCollapse = { }
                     )
@@ -188,7 +188,7 @@ class OverlayService : Service() {
 
     fun getAgentCore() = agentCore
     fun getVoiceManager() = voiceManager
-    fun getRecentTasks() = recentTasks
+    fun getRecentTasks() = recentTasksState
 
     fun executeCommand(command: String) {
         agentCore.executeTask(command)
@@ -196,7 +196,7 @@ class OverlayService : Service() {
         // Refresh tasks after execution
         CoroutineScope(Dispatchers.IO).launch {
             delay(1000)
-            recentTasks = graphifyRepo.getRecentTasks(10)
+            recentTasksState = graphifyRepo.getRecentTasks(10)
         }
     }
 
