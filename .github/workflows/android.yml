@@ -29,7 +29,18 @@ jobs:
 
       - name: Build APK
         run: |
+          chmod +x gradlew      - name: Build APK
+        run: |
+          set +e
           chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Show compiler errors
+        if: failure()
+        run: |
+          grep -n -E '(^e: |error:|Unresolved reference|Type mismatch|Overload resolution ambiguity)' build.log | head -80 || tail -n 100 build.log
           ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
