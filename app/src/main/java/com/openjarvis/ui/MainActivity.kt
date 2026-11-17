@@ -93,8 +93,12 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun startOverlayService() {
-        startService(Intent(this, OverlayService::class.java))
-        Toast.makeText(this, "Jarvis is active", Toast.LENGTH_SHORT).show()
+        try {
+            OverlayService.start(this)
+            Toast.makeText(this, "Starting Jarvis...", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not start Jarvis: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
     
     private fun openSettings() {
