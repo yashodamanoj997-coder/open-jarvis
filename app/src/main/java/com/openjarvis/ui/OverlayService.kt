@@ -51,28 +51,47 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        
-        agentCore = AgentCore(this)
-        voiceManager = VoiceManager(this)
-        graphifyRepo = GraphifyRepository(this)
-        socketServer = SocketServer(this, agentCore, graphifyRepo)
-        
+
         startForeground(NOTIFICATION_ID, createNotification())
-        
+
+        try {
+            agentCore = AgentCore(this)
+            voiceManager = VoiceManager(this)
+            graphifyRepo = GraphifyRepository(this)
+            socketServer = SocketServer(this, agentCore, graphifyRepo)
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Core initialization failed", e)
+            stopSelf()
+            return
+        }
+
         CoroutineScope(Dispatchers.Main).launch {
-            delay(0)
             initializeServices()
         }
-        
-        socketServer.start()
-        showOverlay()
-        
-        // Load recent tasks
-        CoroutineScope(Dispatchers.IO).launch {
-            recentTasksState = graphifyRepo.getRecentTasks(10)
+
+        try {
+            socketServer.start()
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Socket server failed to start", e)
+        }
+
+        try {
+            showOverlay()
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Overlay failed to show", e)
+        }
+
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                recentTasksState = withContext(Dispatchers.IO) {
+                    graphifyRepo.getRecentTasks(10)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("OverlayService", "Recent tasks loading failed", e)
+            }
         }
     }
-    
+
     private suspend fun initializeServices() {
         if (isInitialized) return
         isInitialized = true
@@ -86,10 +105,6 @@ class OverlayService : Service() {
             }
         }
         
-        try {
-        } catch (e: Exception) {
-            // Voice initialization
-        }
     }
 
     private fun showOverlay() {
@@ -151,11 +166,22 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
-        removeOverlay()
-        super.onDestroy()
         stateCollectJob?.cancel()
-        socketServer.stop()
-        voiceManager.release()
+        removeOverlay()
+
+        try {
+            if (::socketServer.isInitialized) socketServer.stop()
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Socket cleanup failed", e)
+        }
+
+        try {
+            if (::voiceManager.isInitialized) voiceManager.release()
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Voice cleanup failed", e)
+        }
+
+        super.onDestroy()
     }
 
     private fun createNotification(): Notification {
